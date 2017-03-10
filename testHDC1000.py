@@ -25,6 +25,10 @@ print ""
 
 hdc1000 = SDL_Pi_HDC1000.SDL_Pi_HDC1000()
 
+print "------------"
+print "Manfacturer ID=0x%X"% hdc1000.readManufacturerID()  
+print "Device ID=0x%X"% hdc1000.readDeviceID()  
+print "Serial Number ID=0x%X"% hdc1000.readSerialNumber()  
 while True:
     
         print "-----------------"

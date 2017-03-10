@@ -5,7 +5,9 @@ Designed for the SwitchDoc Labs HDC1000 Breakout Board
 <BR>
 store.switchdoc.com
 
-Initial Release:   January 2017, Version 1.0
+March 9, 2017:  Added Serial Number, Manufacturer ID and Device ID
+
+Initial Release:   January 2017, Version 1.0<BR>
 
 HDC1000 is on default I2C address value of 0x40
 
