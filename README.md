@@ -1,15 +1,17 @@
-Pure Python Raspberry Pi Driver for the TI HDC1000 Temperature and Humidity Sensor
+Pure Python Raspberry Pi Driver for the TI HDC1000/HDC1080 Temperature and Humidity Sensor
 <BR>
 SDL_Pi_HDC1000 <BR>
-Designed for the SwitchDoc Labs HDC1000 Breakout Board
+Designed for the SwitchDoc Labs HDC1000/HDC1080 Breakout Board
 <BR>
 store.switchdoc.com
+
+June 26, 2017:  Fixed Accuracy Problem
 
 March 9, 2017:  Added Serial Number, Manufacturer ID and Device ID
 
 Initial Release:   January 2017, Version 1.0<BR>
 
-HDC1000 is on default I2C address value of 0x40
+HDC1000/HDC1080 is on default I2C address value of 0x40
 
 Default resolution is 14 bit tempeature and 14 bit humidity<BR>
 Heater is default off

@@ -1,4 +1,4 @@
-#
+
 #
 # SDL_Pi_HDC1000
 # Raspberry Pi Driver for the SwitchDoc Labs HDC1000 Breakout Board
@@ -17,10 +17,12 @@ HDC1000_TEMPERATURE_REGISTER =          (0x00)
 HDC1000_HUMIDITY_REGISTER =             (0x01)
 HDC1000_CONFIGURATION_REGISTER =        (0x02)
 HDC1000_MANUFACTURERID_REGISTER =       (0xFE)
-HDC1000_DEVICEID_REGISTER =        	(0xFF)
+HDC1000_DEVICEID_REGISTER =         (0xFF)
 HDC1000_SERIALIDHIGH_REGISTER =         (0xFB)
 HDC1000_SERIALIDMID_REGISTER =          (0xFC)
 HDC1000_SERIALIDBOTTOM_REGISTER =       (0xFD)
+
+
 
 #Configuration Register Bits
 
@@ -39,106 +41,144 @@ HDC1000_CONFIG_HUMIDITY_RESOLUTION_14BIT = (0x0000)
 HDC1000_CONFIG_HUMIDITY_RESOLUTION_11BIT = (0x0100)
 HDC1000_CONFIG_HUMIDITY_RESOLUTION_8BIT = (0x0200)
 
-import smbus
-import time
+I2C_SLAVE=0x0703
 
+import struct, array, time, io, fcntl
+
+HDC1000_fw= 0
+HDC1000_fr= 0
 
 class SDL_Pi_HDC1000:
         def __init__(self, twi=1, addr=HDC1000_ADDRESS ):
-                self._bus = smbus.SMBus(twi)
-                self._addr = addr
-                #       0x10(48)    Temperature, Humidity enabled, Resolultion = 14-bits, Heater off
+                global HDC1000_fr, HDC1000_fw
+                
+                HDC1000_fr= io.open("/dev/i2c-"+str(twi), "rb", buffering=0)
+                HDC1000_fw= io.open("/dev/i2c-"+str(twi), "wb", buffering=0)
+
+                # set device address
+                fcntl.ioctl(HDC1000_fr, I2C_SLAVE, HDC1000_ADDRESS)
+                fcntl.ioctl(HDC1000_fw, I2C_SLAVE, HDC1000_ADDRESS)
+                time.sleep(0.015) #15ms startup time
+
                 config = HDC1000_CONFIG_ACQUISITION_MODE 
-                self._bus.write_byte_data(HDC1000_ADDRESS,HDC1000_CONFIGURATION_REGISTER, config>>8)
+
+                s = [HDC1000_CONFIGURATION_REGISTER,config>>8,0x00]
+                s2 = bytearray( s )
+                HDC1000_fw.write( s2 ) #sending config register bytes
+                time.sleep(0.015)               # From the data sheet
+                
+                #       0x10(48)    Temperature, Humidity enabled, Resolultion = 14-bits, Heater off
+                #config = HDC1000_CONFIG_ACQUISITION_MODE 
+                #self._bus.write_byte_data(HDC1000_ADDRESS,HDC1000_CONFIGURATION_REGISTER, config>>8)
 
 
         # public functions
 
         def readTemperature(self):
+               
+
+                s = [HDC1000_TEMPERATURE_REGISTER] # temp
+                s2 = bytearray( s )
+                HDC1000_fw.write( s2 )
+                time.sleep(0.0625)              # From the data sheet
+
+                data = HDC1000_fr.read(2) #read 2 byte temperature data
+                buf = array.array('B', data)
+                #print ( "Temp: %f 0x%X %X" % (  ((((buf[0]<<8) + (buf[1]))/65536.0)*165.0 ) - 40.0   ,buf[0],buf[1] )  )
+
                 
-                # Send temp measurement command, 0x00(00)
-
-                self._bus.write_byte(HDC1000_ADDRESS, HDC1000_TEMPERATURE_REGISTER )
-                time.sleep(0.020)
-
-
-                # Read data back, 2 bytes
-
-                # temp MSB, temp LSB
-                data0 = self._bus.read_byte(HDC1000_ADDRESS)
-                data1 = self._bus.read_byte(HDC1000_ADDRESS)
                 # Convert the data
-                temp = (data0 * 256) + data1
+                temp = (buf[0] * 256) + buf[1]
                 cTemp = (temp / 65536.0) * 165.0 - 40
                 return cTemp
 
 
         def readHumidity(self):
                 # Send humidity measurement command, 0x01(01)
+                time.sleep(0.015)               # From the data sheet
 
-                self._bus.write_byte(HDC1000_ADDRESS, HDC1000_HUMIDITY_REGISTER) 
+                s = [HDC1000_HUMIDITY_REGISTER] # hum
+                s2 = bytearray( s )
+                HDC1000_fw.write( s2 )
+                time.sleep(0.0625)              # From the data sheet
 
-                time.sleep(0.020)
-
-
-                # Read data back, 2 bytes
-
-                # humidity MSB, humidity LSB
-                data0 = self._bus.read_byte(HDC1000_ADDRESS)
-                data1 = self._bus.read_byte(HDC1000_ADDRESS)
-                # Convert the data
-                humidity = (data0 * 256) + data1
+                data = HDC1000_fr.read(2) #read 2 byte humidity data
+                buf = array.array('B', data)
+                #print ( "Humidity: %f 0x%X %X " % (  ((((buf[0]<<8) + (buf[1]))/65536.0)*100.0 ),  buf[0], buf[1] ) )
+                humidity = (buf[0] * 256) + buf[1]
                 humidity = (humidity / 65536.0) * 100.0
                 return humidity
         
         def readConfigRegister(self):
                 # Read config register
 
-                self._bus.write_byte(HDC1000_ADDRESS, HDC1000_CONFIGURATION_REGISTER) 
 
-                # config register
-                data0 = self._bus.read_byte(HDC1000_ADDRESS)
-                data1 = self._bus.read_byte(HDC1000_ADDRESS)
+                s = [HDC1000_CONFIGURATION_REGISTER] # temp
+                s2 = bytearray( s )
+                HDC1000_fw.write( s2 )
+                time.sleep(0.0625)              # From the data sheet
 
-                #print "register=%d %X"% (data0, data0)
-                return data0
+                data = HDC1000_fr.read(2) #read 2 byte config data
 
+                buf = array.array('B', data)
+
+
+                #print "register=%X %X"% (buf[0], buf[1])
+                return buf[0]*256+buf[1]
+
+       
         def turnHeaterOn(self):
                 # Read config register
                 config = self.readConfigRegister()
-                config = config<<8 | HDC1000_CONFIG_HEATER_ENABLE 
-                self._bus.write_byte_data(HDC1000_ADDRESS,HDC1000_CONFIGURATION_REGISTER,config>>8)
+                config = config | HDC1000_CONFIG_HEATER_ENABLE 
+                s = [HDC1000_CONFIGURATION_REGISTER,config>>8,0x00]
+                s2 = bytearray( s )
+                HDC1000_fw.write( s2 ) #sending config register bytes
+                time.sleep(0.015)               # From the data sheet
 
                 return
 
         def turnHeaterOff(self):
                 # Read config register
                 config = self.readConfigRegister()
-                config = config<<8 & ~HDC1000_CONFIG_HEATER_ENABLE 
-                self._bus.write_byte_data(HDC1000_ADDRESS,HDC1000_CONFIGURATION_REGISTER,config>>8)
+                config = config & ~HDC1000_CONFIG_HEATER_ENABLE 
+                s = [HDC1000_CONFIGURATION_REGISTER,config>>8,0x00]
+                s2 = bytearray( s )
+                HDC1000_fw.write( s2 ) #sending config register bytes
+                time.sleep(0.015)               # From the data sheet
 
                 return
+
+        
 
         def setHumidityResolution(self,resolution):
                 # Read config register
                 config = self.readConfigRegister()
-                config = (config<<8 & ~0x0300) | resolution 
-                self._bus.write_byte_data(HDC1000_ADDRESS,HDC1000_CONFIGURATION_REGISTER,config>>8)
+                config = (config & ~0x0300) | resolution 
+                s = [HDC1000_CONFIGURATION_REGISTER,config>>8,0x00]
+                s2 = bytearray( s )
+                HDC1000_fw.write( s2 ) #sending config register bytes
+                time.sleep(0.015)               # From the data sheet
                 return
 
         def setTemperatureResolution(self,resolution):
                 # Read config register
                 config = self.readConfigRegister()
-                config = (config<<8 & ~0x0400) | resolution 
-                self._bus.write_byte_data(HDC1000_ADDRESS,HDC1000_CONFIGURATION_REGISTER,config>>8)
+                config = (config & ~0x0400) | resolution 
+               
+                s = [HDC1000_CONFIGURATION_REGISTER,config>>8,0x00]
+                s2 = bytearray( s )
+                HDC1000_fw.write( s2 ) #sending config register bytes
+                time.sleep(0.015)               # From the data sheet
+                
+                
                 return
-
 
         def readBatteryStatus(self):
                 
                 # Read config register
                 config = self.readConfigRegister()
-                config = config<<8 & ~ HDC1000_CONFIG_HEATER_ENABLE
+                config = config & ~ HDC1000_CONFIG_HEATER_ENABLE
 
                 if (config == 0):
                     return True
@@ -146,30 +186,58 @@ class SDL_Pi_HDC1000:
                     return False
 
                 return 0
-	
-	def readManufacturerID(self):
 
-		data = self._bus.read_i2c_block_data (HDC1000_ADDRESS, HDC1000_MANUFACTURERID_REGISTER  , 2)
-		return data[0] * 256 + data[1]
 
-	def readDeviceID(self):
+        def readManufacturerID(self):
 
-		data = self._bus.read_i2c_block_data (HDC1000_ADDRESS, HDC1000_DEVICEID_REGISTER  , 2)
-		return data[0] * 256 + data[1]
+            s = [HDC1000_MANUFACTURERID_REGISTER] # temp
+            s2 = bytearray( s )
+            HDC1000_fw.write( s2 )
+            time.sleep(0.0625)              # From the data sheet
+    
+            data = HDC1000_fr.read(2) #read 2 byte config data
+    
+            buf = array.array('B', data)
+            return buf[0] * 256 + buf[1]
 
-	def readSerialNumber(self):
+        def readDeviceID(self):
+    
+            s = [HDC1000_DEVICEID_REGISTER] # temp
+            s2 = bytearray( s )
+            HDC1000_fw.write( s2 )
+            time.sleep(0.0625)              # From the data sheet
+    
+            data = HDC1000_fr.read(2) #read 2 byte config data
+    
+            buf = array.array('B', data)
+            return buf[0] * 256 + buf[1]
 
-		serialNumber = 0
+        def readSerialNumber(self):
 
-		data = self._bus.read_i2c_block_data (HDC1000_ADDRESS, HDC1000_SERIALIDHIGH_REGISTER  , 2)
-                serialNumber = data[0]*256+ data[1] 
-
-		data = self._bus.read_i2c_block_data (HDC1000_ADDRESS, HDC1000_SERIALIDMID_REGISTER  , 2)
-                serialNumber = serialNumber*256 + data[0]*256 + data[1] 
-
-		data = self._bus.read_i2c_block_data (HDC1000_ADDRESS, HDC1000_SERIALIDBOTTOM_REGISTER  , 2)
-                serialNumber = serialNumber*256 + data[0]*256 + data[1] 
-
-		return serialNumber
-	
-	
+            serialNumber = 0
+    
+            s = [HDC1000_SERIALIDHIGH_REGISTER] # temp
+            s2 = bytearray( s )
+            HDC1000_fw.write( s2 )
+            time.sleep(0.0625)              # From the data sheet
+            data = HDC1000_fr.read(2) #read 2 byte config data
+            buf = array.array('B', data)
+            serialNumber = buf[0]*256+ buf[1] 
+    
+            s = [HDC1000_SERIALIDMID_REGISTER] # temp
+            s2 = bytearray( s )
+            HDC1000_fw.write( s2 )
+            time.sleep(0.0625)              # From the data sheet
+            data = HDC1000_fr.read(2) #read 2 byte config data
+            buf = array.array('B', data)
+            serialNumber = serialNumber*256 + buf[0]*256 + buf[1] 
+    
+            s = [HDC1000_SERIALIDBOTTOM_REGISTER] # temp
+            s2 = bytearray( s )
+            HDC1000_fw.write( s2 )
+            time.sleep(0.0625)              # From the data sheet
+            data = HDC1000_fr.read(2) #read 2 byte config data
+            buf = array.array('B', data)
+            serialNumber = serialNumber*256 + buf[0]*256 + buf[1] 
+    
+            return serialNumber
